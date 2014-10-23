@@ -1,0 +1,79 @@
+---
+title: "Getting and Cleaning Data - Course Project"
+output: html_document
+---
+
+The data for this project was downloaded from [hear](https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip). The zip file was decompressed at the working directory, and the data files were in the folder named "UCI HAR Dataset". So first I reset the working directory.
+
+```{r, eval=FALSE}
+setwd("./UCI HAR Dataset")
+```
+
+There are three major components to combine with each other in the train folder, and the three variables are `train` (the measurements of training set), `trainsubject` (subject IDs) and `trainlabels` (labels indicating the kinds of activities). In the case of test set, there are also three variables `test`, `testsubject` and `testlabels` in the similar way.
+
+```{r}
+trainlabels <- read.table("./train/y_train.txt", col.names="activity")
+trainsubject <- read.table("./train/subject_train.txt", col.names="subject")
+train <- read.table("./train/X_train.txt")
+testlabels <- read.table("./test/y_test.txt", col.names="activity")
+testsubject <- read.table("./test/subject_test.txt", col.names="subject")
+test <- read.table("./test/X_test.txt")
+```
+
+The variables `test` and `train` each have 561 columns that are the measurements of the accelerometer and gyroscope signals from smartphones. Because the column names were empty when the original data sets were read, the relevant names from `features` were assigned to the column names of the two data sets.
+
+```{r}
+features <- read.table("features.txt")
+colnames(train) <- features[, 2]
+colnames(test) <- features[, 2]
+```
+
+The labels in the `testlabels` and `trainlabels` are integers and they themselves cannot describe anything about what kinds of activities the subjects did. So the description column was added to make the data set more descriptive.
+
+```{r}
+activity.labels <- read.table("activity_labels.txt", col.names=c("labels", "description"))
+train.description <- merge(trainlabels, activity.labels, by.x="activity", by.y="labels", sort=FALSE)
+test.description <- merge(testlabels, activity.labels, by.x="activity", by.y="labels", sort=FALSE)
+```
+
+According to the indication of this project, I extracted only the measurements on the mean and standard deviation for each meansurement from the original data sets, and it was merged to the data sets above.
+
+```{r}
+test.extract <- cbind(test[,grep("mean[()]", names(test))], test[,grep("std[()]", names(test))])
+train.extract <- cbind(train[,grep("mean[()]", names(train))], train[,grep("std[()]", names(train))])
+test.extract <- cbind(test.extract, test.description)
+train.extract <- cbind(train.extract, train.description)
+```
+
+And then the column for subject IDs were added.
+
+```{r}
+test.extract <- cbind(test.extract, testsubject)
+train.extract <- cbind(train.extract, trainsubject)
+```
+
+
+Finally, the test and training data sets were merged together, and I modified the variable names to make them more readable.
+
+
+```{r}
+merged.df <- merge(test.extract, train.extract, all=TRUE, sort=FALSE)
+names(merged.df) <- sapply(names(merged.df), function(sub.obj){gsub("-|[(]|[)]", "", sub.obj)})
+names(merged.df) <- sapply(names(merged.df), function(sub.obj){gsub("mean", "Mean", sub.obj)})
+names(merged.df) <- sapply(names(merged.df), function(sub.obj){gsub("std", "Std", sub.obj)})
+```
+
+I thought that covered the every steps 1-4, and I carried out the step 5 using a `dplyr` package. First the table was grouped by the subjects and the descriptions of activities, and then summarized it using a `summarise_each_` function.
+
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+merged.tbl <- tbl_df(merged.df)
+grouped <- group_by(merged.tbl, subject, description)
+summarized <- summarise_each_(grouped, funs(mean), names(grouped)[-67]) # 67th: "activity"
+```
+
+The summarized result was output as a text file.
+
+```{r, eval=FALSE}
+write.table(as.data.frame(summarized), file="courseproject.txt", row.name=FALSE)
+```
